@@ -1,42 +1,31 @@
 #ifndef ACTIONLIB_HANDLER_HH
 #define ACTIONLIB_HANDLER_HH
 
+#include <functional>
+
 // PLEXIL API
 #include "AdapterConfiguration.hh"
 #include "commandHandlerDefs.hh"
 #include "InterfaceAdapter.hh"
 #include "Value.hh"
 
-#include <functional>
-
-#include <actionlib/client/simple_action_client.h>
-#include <actionlib/action_definition.h>
-
 namespace PLEXIL {
     class Command;
     class AdapterExecInterface;
 }
 
+// ROS API
+#include <actionlib/client/simple_action_client.h>
+#include <actionlib/action_definition.h>
+
 namespace plexil_actionlib {
     template<typename ActionT>
     class ActionlibHandler : public PLEXIL::CommandHandler {
-        /** Defines:
-          Goal
-          Result
-          Feedback
-
-          GoalConstPtr
-          ResultConstPtr
-          FeedbackConstPtr
-
-          ActionGoal
-          ActionResult
-          ActionFeedback
-
-          ActionGoalPtr
-          ActionGoalConstPtr
-          ActionResultConstPtr
-          ActionFeedbackConstPtr
+        /** Action type definitions
+          Goal                             Result               Feedback
+          GoalConstPtr                     ResultConstPtr       FeedbackConstPtr
+          ActionGoal                       ActionResult         ActionFeedback
+          ActionGoalPtr ActionGoalConstPtr ActionResultConstPtr ActionFeedbackConstPtr
          **/
         ACTION_DEFINITION(ActionT);
 
@@ -53,46 +42,58 @@ namespace plexil_actionlib {
                     PLEXIL::AdapterExecInterface*)>
                 ResultHandlerFunT;
 
+            // Default goal factory
             static Goal DefaultGoalFactoryFun(PLEXIL::Command* cmd, PLEXIL::AdapterExecInterface* aei) {
-                ROS_WARN_STREAM("Default goal function called.");
+                ROS_DEBUG_STREAM("Default goal function called.");
                 return Goal();
             }
 
+            // Default result handler
             static void DefaultResultFun(
                     const actionlib::SimpleClientGoalState&,
                     const ResultConstPtr&,
                     PLEXIL::Command* cmd,
                     PLEXIL::AdapterExecInterface* aei)
             {
-                ROS_WARN_STREAM("Default result function called.");
+                ROS_DEBUG_STREAM("Default result function called.");
             }
 
             ActionlibHandler(
                     ros::NodeHandle nh,
                     std::string command_name,
                     std::string action_topic,
-                    GoalFactoryFunT goal_fun = DefaultGoalFactoryFun,
+                    GoalFactoryFunT goal_fun     = DefaultGoalFactoryFun,
                     ResultHandlerFunT result_fun = DefaultResultFun);
-
-            ActionlibHandler(const ActionlibHandler&) = delete;
-            ActionlibHandler& operator= (const ActionlibHandler&) = delete;
 
             virtual ~ActionlibHandler();
 
+            // Disable copy constructors
+            ActionlibHandler(const ActionlibHandler&) = delete;
+            ActionlibHandler& operator= (const ActionlibHandler&) = delete;
+
+            // PLEXIL Interfaces
             virtual void executeCommand(PLEXIL::Command *cmd, PLEXIL::AdapterExecInterface *aei);
 
             virtual void abortCommand(PLEXIL::Command *cmd, PLEXIL::AdapterExecInterface *aei);
 
+        private:
+            // Bookkeeping
+            std::string m_command_name;
+
+            // ROS interfaces
+            actionlib::SimpleActionClient<ActionT> m_client;
+
+            // User functions
+            GoalFactoryFunT m_goal_fun;
+            ResultHandlerFunT m_result_fun;
+
+        protected:
+            // Internal actionlib callback
             void doneCallback(
                     const actionlib::SimpleClientGoalState& state,
                     const ResultConstPtr& result,
                     PLEXIL::Command *cmd,
                     PLEXIL::AdapterExecInterface *aei);
-        private:
-            std::string m_command_name;
-            actionlib::SimpleActionClient<ActionT> m_client;
-            GoalFactoryFunT m_goal_fun;
-            ResultHandlerFunT m_result_fun;
     };
 
 }
@@ -153,7 +154,14 @@ void plexil_actionlib::ActionlibHandler<ActionT>::doneCallback(
     ROS_INFO_STREAM("Action goal done.");
 
     // Process result if necessary
-    this->m_result_fun(state, result, cmd, aei);
+    try {
+        this->m_result_fun(state, result, cmd, aei);
+    } catch(std::runtime_error &err) {
+        ROS_ERROR_STREAM("Error processing result: "<<err.what());
+        aei->handleCommandAck(cmd, PLEXIL::CommandHandleValue::COMMAND_FAILED);
+        aei->notifyOfExternalEvent();
+        return;
+    }
 
     // Handle result status
     switch(state.state_) {
