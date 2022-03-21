@@ -125,10 +125,14 @@ void plexil_actionlib::ActionlibHandler<ActionT>::executeCommand(PLEXIL::Command
     try {
         Goal goal = m_goal_fun(cmd, aei);
 
-        m_client.sendGoal(goal,
-                boost::bind(
-                    &ActionlibHandler<ActionT>::doneCallback,
-                    this, _1, _2, cmd, aei));
+        m_client.sendGoal(
+                goal,
+                [this,cmd,aei](
+                    const actionlib::SimpleClientGoalState& state,
+                    const ResultConstPtr& result)
+                {
+                        this->doneCallback(state, result, cmd, aei);
+                });
 
         aei->handleCommandAck(cmd, PLEXIL::CommandHandleValue::COMMAND_ACCEPTED);
         aei->notifyOfExternalEvent();
@@ -182,4 +186,3 @@ void plexil_actionlib::ActionlibHandler<ActionT>::doneCallback(
 }
 
 #endif // ifndef ACTIONLIB_HANDLER_HH
-
