@@ -134,11 +134,12 @@ void plexil_actionlib::ActionlibHandler<ActionT>::executeCommand(PLEXIL::Command
                         this->doneCallback(state, result, cmd, aei);
                 });
 
-        aei->handleCommandAck(cmd, PLEXIL::CommandHandleValue::COMMAND_ACCEPTED);
+        aei->handleCommandAck(cmd, PLEXIL::CommandHandleValue::COMMAND_SENT_TO_SYSTEM);
         aei->notifyOfExternalEvent();
     } catch(std::runtime_error &err) {
         ROS_ERROR_STREAM("Error sending goal: "<<err.what());
         aei->handleCommandAck(cmd, PLEXIL::CommandHandleValue::COMMAND_DENIED);
+        aei->notifyOfExternalEvent();
     }
 }
 
@@ -155,13 +156,11 @@ void plexil_actionlib::ActionlibHandler<ActionT>::doneCallback(
         PLEXIL::Command *cmd,
         PLEXIL::AdapterExecInterface *aei)
 {
-    ROS_INFO_STREAM("Action goal done.");
-
     // Process result if necessary
     try {
         this->m_result_fun(state, result, cmd, aei);
     } catch(std::runtime_error &err) {
-        ROS_ERROR_STREAM("Error processing result: "<<err.what());
+        ROS_ERROR_STREAM("Error processing "<<m_command_name<<" result: "<<err.what());
         aei->handleCommandAck(cmd, PLEXIL::CommandHandleValue::COMMAND_FAILED);
         aei->notifyOfExternalEvent();
         return;
@@ -170,6 +169,7 @@ void plexil_actionlib::ActionlibHandler<ActionT>::doneCallback(
     // Handle result status
     switch(state.state_) {
         case actionlib::SimpleClientGoalState::SUCCEEDED:
+            ROS_INFO_STREAM(m_command_name<<" goal succeeded.");
             aei->handleCommandAck(cmd, PLEXIL::CommandHandleValue::COMMAND_SUCCESS);
             aei->notifyOfExternalEvent();
             return;
@@ -177,11 +177,12 @@ void plexil_actionlib::ActionlibHandler<ActionT>::doneCallback(
         case actionlib::SimpleClientGoalState::REJECTED:
         case actionlib::SimpleClientGoalState::PREEMPTED:
         case actionlib::SimpleClientGoalState::ABORTED:
+            ROS_INFO_STREAM(m_command_name<<" goal failed.");
             aei->handleCommandAck(cmd, PLEXIL::CommandHandleValue::COMMAND_FAILED);
             aei->notifyOfExternalEvent();
             return;
         default:
-            ROS_ERROR_STREAM("Unknown result state: "<<state.state_);
+            ROS_ERROR_STREAM("Unknown "<<m_command_name<<" result state: "<<state.state_);
     };
 }
 
