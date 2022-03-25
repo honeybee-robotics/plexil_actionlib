@@ -161,6 +161,7 @@ void plexil_actionlib::ActionlibHandler<ActionT>::doneCallback(
         this->m_result_fun(state, result, cmd, aei);
     } catch(std::runtime_error &err) {
         ROS_ERROR_STREAM("Error processing "<<m_command_name<<" result: "<<err.what());
+        cmd->acknowledgeAbort(true);
         aei->handleCommandAck(cmd, PLEXIL::CommandHandleValue::COMMAND_FAILED);
         aei->notifyOfExternalEvent();
         return;
@@ -177,7 +178,8 @@ void plexil_actionlib::ActionlibHandler<ActionT>::doneCallback(
         case actionlib::SimpleClientGoalState::REJECTED:
         case actionlib::SimpleClientGoalState::PREEMPTED:
         case actionlib::SimpleClientGoalState::ABORTED:
-            ROS_INFO_STREAM(m_command_name<<" goal failed.");
+            ROS_ERROR_STREAM(m_command_name<<" goal failed.");
+            cmd->acknowledgeAbort(true);
             aei->handleCommandAck(cmd, PLEXIL::CommandHandleValue::COMMAND_FAILED);
             aei->notifyOfExternalEvent();
             return;
